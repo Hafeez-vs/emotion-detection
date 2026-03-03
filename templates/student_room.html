@@ -30,8 +30,12 @@
 
 const classroomId = "{{ classroom.id }}";
 
+
+
+const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+
 const socket = new WebSocket(
-    "ws://" + window.location.host + "/ws/classroom/" + classroomId + "/"
+    protocol + window.location.host + "/ws/classroom/7/"
 );
 
 const videoContainer = document.getElementById("videoContainer");
