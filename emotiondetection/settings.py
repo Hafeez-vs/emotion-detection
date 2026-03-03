@@ -26,7 +26,8 @@ SECRET_KEY = 'django-insecure-+t+9wft!!h9uo%yie_u7d=a0sj$qqe4(xh-f=dpg$jp9$9**8q
 DEBUG = True
 
 # ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['emotion-detection-eoz2.onrender.com']
+CSRF_TRUSTED_ORIGINS = ['https://emotion-detection-eoz2.onrender.com']
 
 # Application definition
 
@@ -50,6 +51,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
 ]
 
 
