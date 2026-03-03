@@ -212,12 +212,21 @@ socket.onmessage = async function(event) {
     }
 
     if (data.type === "answer") {
-        const student = data.sender;
-        if (peerConnections[student]) {
-            await peerConnections[student]
-                .setRemoteDescription(new RTCSessionDescription(data.answer));
+    const student = data.sender;
+    const pc = peerConnections[student];
+
+    if (pc) {
+        console.log("Signaling state before answer:", pc.signalingState);
+
+        if (pc.signalingState === "have-local-offer") {
+            await pc.setRemoteDescription(
+                new RTCSessionDescription(data.answer)
+            );
+        } else {
+            console.log("Ignoring duplicate answer from", student);
         }
     }
+}
 
     if (data.type === "candidate") {
         const student = data.sender;

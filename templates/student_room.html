@@ -125,10 +125,7 @@ socket.onmessage = async function(event) {
             new RTCSessionDescription(data.offer)
         );
 
-        if (peerConnection.signalingState !== "have-remote-offer") {
-    console.log("Wrong state for answer:", peerConnection.signalingState);
-    return;
-}
+
 
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
@@ -140,12 +137,15 @@ socket.onmessage = async function(event) {
         }));
     }
 
-    if (data.type === "candidate" && peerConnection && peerConnection.remoteDescription) {
+    if (data.type === "candidate" && peerConnection) {
+    try {
         await peerConnection.addIceCandidate(
             new RTCIceCandidate(data.candidate)
         );
+    } catch (e) {
+        console.log("ICE add error:", e);
     }
-};
+}
 
     const micBtn = document.getElementById("micBtn");
 
