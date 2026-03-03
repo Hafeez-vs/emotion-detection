@@ -1,0 +1,209 @@
+<!--<!DOCTYPE html>-->
+<!--<html>-->
+<!--<head>-->
+<!--    <title>Student Dashboard</title>-->
+<!--    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">-->
+<!--</head>-->
+<!--<body class="bg-light">-->
+<!--<a href="{% url 'logout' %}" class="btn btn-danger">-->
+<!--    Logout-->
+<!--</a>-->
+<!--<div class="container mt-5">-->
+<!--    <h2>Available Classrooms</h2>-->
+
+<!--    {% for classroom in classrooms %}-->
+<!--        <div class="card p-3 mb-2">-->
+<!--            <h5>{{ classroom.title }}</h5>-->
+
+<!--            <form method="post" action="{% url 'join_class' classroom.id %}">-->
+<!--                {% csrf_token %}-->
+<!--                <input type="text" name="code" placeholder="Enter Code" class="form-control mb-2">-->
+<!--                <button class="btn btn-primary">Join</button>-->
+<!--            </form>-->
+<!--        </div>-->
+<!--    {% endfor %}-->
+<!--</div>-->
+
+<!--</body>-->
+<!--</html>-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>AI Emotion Classroom - Student Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+body {
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(-45deg, #667eea, #764ba2, #6a11cb, #2575fc);
+    background-size: 400% 400%;
+    animation: gradientBG 12s ease infinite;
+    color: white;
+    min-height: 100vh;
+}
+
+@keyframes gradientBG {
+    0% {background-position: 0% 50%;}
+    50% {background-position: 100% 50%;}
+    100% {background-position: 0% 50%;}
+}
+
+.dashboard-container {
+    padding: 40px;
+}
+
+/* Glass Card */
+.card-box {
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 25px;
+    margin-bottom: 25px;
+    transition: 0.3s ease;
+}
+
+.card-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+}
+
+/* Stats Cards */
+.stat-card {
+    text-align: center;
+}
+
+.stat-card h3 {
+    font-weight: bold;
+}
+
+/* Buttons */
+.btn-join {
+    background: linear-gradient(90deg, #ffffff, #f3f3f3);
+    color: #764ba2;
+    font-weight: bold;
+    border-radius: 30px;
+    transition: 0.3s;
+}
+
+.btn-join:hover {
+    background: linear-gradient(90deg, #6a11cb, #2575fc);
+    color: white;
+    transform: scale(1.05);
+}
+
+.class-item {
+    background: rgba(255,255,255,0.2);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 15px;
+    transition: 0.3s;
+}
+
+.class-item:hover {
+    background: rgba(255,255,255,0.3);
+    transform: translateX(5px);
+}
+
+.form-control {
+    border-radius: 10px;
+    border: none;
+    padding: 10px;
+}
+
+.form-control:focus {
+    box-shadow: 0 0 10px rgba(255,255,255,0.8);
+}
+</style>
+</head>
+
+<body>
+
+<div class="dashboard-container container">
+
+    <!-- TOP BAR -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>🤖 AI Emotion Classroom</h2>
+        <div>
+            Welcome, <strong>{{ request.user.username }}</strong>
+            <a href="{% url 'logout' %}" class="btn btn-danger ms-3">
+                Logout
+            </a>
+        </div>
+    </div>
+
+    <!-- CURRENT EMOTION -->
+    <div class="card-box">
+        <h4>😊 Current Emotion</h4>
+        <h2>
+            {{ latest_emotion|default:"Happy" }}
+        </h2>
+        <small>Detected in real-time during class</small>
+    </div>
+
+    <!-- STATS SECTION -->
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card-box stat-card">
+                <h6>📅 Attendance</h6>
+                <h3>{{ attendance|default:"92%" }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card-box stat-card">
+                <h6>🎯 Focus Level</h6>
+                <h3>{{ focus_level|default:"High" }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card-box stat-card">
+                <h6>📊 Engagement Score</h6>
+                <h3>{{ engagement|default:"85%" }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <!-- JOIN CLASS BY CODE -->
+    <div class="card-box mt-4">
+        <h4>🔑 Join Classroom with Code</h4>
+    </div>
+
+    <!-- AVAILABLE CLASSROOMS -->
+    <div class="card-box">
+        <h4>🏫 Available Classrooms</h4>
+
+        {% for classroom in classrooms %}
+        <div class="class-item">
+            <h5>{{ classroom.title }}</h5>
+            <p class="mb-2">Instructor: {{ classroom.teacher }}</p>
+
+            <form method="post" action="{% url 'join_class' classroom.id %}">
+                {% csrf_token %}
+                <div class="row g-2">
+                    <div class="col-md-8">
+                        <input type="text" name="code"
+                               placeholder="Enter Code to Join"
+                               class="form-control" required>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-join w-100">
+                            Join
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        {% empty %}
+        <p>No classrooms available.</p>
+        {% endfor %}
+    </div>
+
+</div>
+
+</body>
+</html>

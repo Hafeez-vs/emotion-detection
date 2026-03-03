@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Room</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        body { background: #121212; color: white; text-align: center; }
+        video { border-radius: 10px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<h2>🎓 {{ classroom.title }} </h2>
+
+<button id="micBtn"
+        style="padding:8px 16px; margin:10px; font-size:14px;">
+    🎤 Mute
+</button>
+
+<div id="videoContainer" style="
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:20px;
+    margin-top:30px;
+"></div>
+
+<script>
+
+const classroomId = "{{ classroom.id }}";
+
+const socket = new WebSocket(
+    "ws://" + window.location.host + "/ws/classroom/" + classroomId + "/"
+);
+
+const videoContainer = document.getElementById("videoContainer");
+
+let localStream;
+let peerConnection;
+
+const config = {
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+};
+
+// 1️⃣ Capture Student Camera
+navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+.then(stream => {
+
+    localStream = stream;
+
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = "<h4>🟢 {{ request.user.username }} (You)</h4>";
+
+    const video = document.createElement("video");
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.width = 300;
+    video.srcObject = stream;
+
+    wrapper.appendChild(video);
+    videoContainer.appendChild(wrapper);
+
+    // Notify join after camera ready
+    socket.send(JSON.stringify({
+        type: "join",
+        sender: "{{ request.user.username }}"
+    }));
+});
+
+// 2️⃣ Handle Messages
+socket.onmessage = async function(event) {
+
+    const data = JSON.parse(event.data);
+    console.log("Received:", data.type, data.sender);
+
+    if (data.type === "offer") {
+        if (peerConnection) {
+        console.log("Already have connection, ignoring duplicate offer");
+        return;
+    }
+        peerConnection = new RTCPeerConnection(config);
+
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.ontrack = event => {
+
+            let video = document.getElementById("teacherVideo");
+
+            if (!video) {
+                const wrapper = document.createElement("div");
+                wrapper.innerHTML = "<h4>👩‍🏫 Teacher</h4>";
+
+                video = document.createElement("video");
+                video.id = "teacherVideo";
+                video.autoplay = true;
+                video.playsInline = true;
+                video.width = 300;
+
+                wrapper.appendChild(video);
+                videoContainer.appendChild(wrapper);
+            }
+
+            video.srcObject = event.streams[0];
+        };
+
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                socket.send(JSON.stringify({
+    type: "candidate",
+    candidate: event.candidate,
+    sender: "{{ request.user.username }}"
+}));
+            }
+        };
+
+        await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(data.offer)
+        );
+
+        if (peerConnection.signalingState !== "have-remote-offer") {
+    console.log("Wrong state for answer:", peerConnection.signalingState);
+    return;
+}
+
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        socket.send(JSON.stringify({
+            type: "answer",
+            answer: answer,
+            sender: "{{ request.user.username }}"
+        }));
+    }
+
+    if (data.type === "candidate" && peerConnection && peerConnection.remoteDescription) {
+        await peerConnection.addIceCandidate(
+            new RTCIceCandidate(data.candidate)
+        );
+    }
+};
+
+    const micBtn = document.getElementById("micBtn");
+
+let isMuted = false;
+
+micBtn.onclick = () => {
+
+    if (!localStream) return;
+
+    localStream.getAudioTracks().forEach(track => {
+        track.enabled = isMuted;   // toggle
+    });
+
+    isMuted = !isMuted;
+
+    micBtn.innerText = isMuted ? "🔊 Unmute" : "🎤 Mute";
+};
+
+</script>
+</body>
+</html>
