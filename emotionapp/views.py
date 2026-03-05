@@ -40,28 +40,65 @@ def kick_student(request):
 @csrf_exempt
 def detect_emotion(request):
 
-    if request.method == "POST":
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid request"}, status=400)
+
+    try:
         data = json.loads(request.body)
         image_data = data.get("image")
 
+        if not image_data:
+            return JsonResponse({"error": "No image received"}, status=400)
+
         # Remove base64 header
-        format, imgstr = image_data.split(';base64,')
+        imgstr = image_data.split(",")[1]
         img_bytes = base64.b64decode(imgstr)
 
         np_arr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-        try:
-            result = DeepFace.analyze(img,actions=['emotion'],enforce_detection=False)
+        # Resize for faster processing
+        img = cv2.resize(img, (224, 224))
 
-            emotion = result[0]['dominant_emotion']
+        # DeepFace emotion analysis
+        result = DeepFace.analyze(
+            img,
+            actions=["emotion"],
+            enforce_detection=False,
+            detector_backend="opencv"
+        )
 
-            return JsonResponse({"emotion": emotion})
+        emotion = result[0]["dominant_emotion"]
 
-        except Exception as e:
-            return JsonResponse({"error": str(e)})
+        return JsonResponse({"emotion": emotion})
 
-    return JsonResponse({"error": "Invalid request"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+# def detect_emotion(request):
+#
+#     if request.method == "POST":
+#         data = json.loads(request.body)
+#         image_data = data.get("image")
+#
+#         # Remove base64 header
+#         format, imgstr = image_data.split(';base64,')
+#         img_bytes = base64.b64decode(imgstr)
+#
+#         np_arr = np.frombuffer(img_bytes, np.uint8)
+#         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+#
+#         try:
+#             result = DeepFace.analyze(img,actions=['emotion'],enforce_detection=False)
+#
+#             emotion = result[0]['dominant_emotion']
+#
+#             return JsonResponse({"emotion": emotion})
+#
+#         except Exception as e:
+#             return JsonResponse({"error": str(e)})
+#
+#     return JsonResponse({"error": "Invalid request"})
 
 def student_register(request):
 
