@@ -43,7 +43,9 @@
 
 <script>
 
-    function detectEmotionAll() {
+console.log("Teacher room script loaded");
+
+function detectEmotionAll() {
 
     const videos = document.querySelectorAll("video");
 
@@ -58,7 +60,7 @@
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        const imageData = canvas.toDataURL("image/jpeg");
+        const imageData = canvas.toDataURL("image/jpeg", 0.6);
 
         fetch("/detect_emotion/", {
             method: "POST",
@@ -70,40 +72,42 @@
         .then(res => res.json())
         .then(data => {
 
-            if (data.emotion) {
+            if (!data.emotion) return;
 
-                const emotionText = document.createElement("p");
-               const emojiMap = {
-    happy: "😄",
-    sad: "😢",
-    angry: "😡",
-    surprise: "😲",
-    fear: "😨",
-    disgust: "🤢",
-    neutral: "😐"
-};
+            const emojiMap = {
+                happy: "😄",
+                sad: "😢",
+                angry: "😡",
+                surprise: "😲",
+                fear: "😨",
+                disgust: "🤢",
+                neutral: "😐"
+            };
 
-let emotionLabel = video.parentElement.querySelector(".emotion-label");
+            let emotionLabel = video.parentElement.querySelector(".emotion-label");
 
-if (!emotionLabel) {
-    emotionLabel = document.createElement("p");
-    emotionLabel.classList.add("emotion-label");
-    emotionLabel.style.color = "yellow";
-    emotionLabel.style.fontWeight = "bold";
-    emotionLabel.style.marginTop = "8px";
-    video.parentElement.appendChild(emotionLabel);
-}
-
-emotionLabel.innerText = emojiMap[data.emotion] + " " + data.emotion;
-                emotionText.style.color = "yellow";
-
-                video.parentElement.appendChild(emotionText);
+            if (!emotionLabel) {
+                emotionLabel = document.createElement("p");
+                emotionLabel.classList.add("emotion-label");
+                emotionLabel.style.color = "yellow";
+                emotionLabel.style.fontWeight = "bold";
+                emotionLabel.style.marginTop = "8px";
+                video.parentElement.appendChild(emotionLabel);
             }
-        });
+
+            emotionLabel.innerText = emojiMap[data.emotion] + " " + data.emotion;
+
+        })
+        .catch(err => console.log("Emotion error:", err));
+
     });
+
 }
+
 
 const classroomId = "{{ classroom.id }}";
+
+console.log("Classroom ID:", classroomId);
 
 const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
 
@@ -111,18 +115,39 @@ const socket = new WebSocket(
     protocol + window.location.host + "/ws/classroom/" + classroomId + "/"
 );
 
+
+socket.onopen = () => {
+    console.log("✅ WebSocket connected");
+};
+
+socket.onerror = (error) => {
+    console.log("❌ WebSocket error:", error);
+};
+
+socket.onclose = () => {
+    console.log("⚠ WebSocket closed");
+};
+
+
 const videoContainer = document.getElementById("videoContainer");
 
 let localStream;
 let peerConnections = {};
 
 const config = {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" }
+    ]
 };
 
-// 1️⃣ Capture Teacher Camera
+
+// 🎥 Capture Teacher Camera
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 .then(stream => {
+
+    console.log("Camera started");
 
     localStream = stream;
 
@@ -138,45 +163,65 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 
     wrapper.appendChild(video);
     videoContainer.appendChild(wrapper);
+
 });
 
-// 2️⃣ Handle Messages
+
+// 📡 Handle WebSocket Messages
 socket.onmessage = async function(event) {
+
+    console.log("📩 Raw message:", event.data);
 
     const data = JSON.parse(event.data);
     console.log("Received:", data.type, data.sender);
+
+
     if (data.type === "join") {
 
         const student = data.sender;
+
         if (peerConnections[student]) {
-        console.log("Already connected to", student);
-        return;
-    }
+            console.log("Already connected to", student);
+            return;
+        }
 
         const pc = new RTCPeerConnection(config);
         peerConnections[student] = pc;
 
+
+        pc.oniceconnectionstatechange = () => {
+            console.log("ICE state for", student, ":", pc.iceConnectionState);
+        };
+
+        pc.onconnectionstatechange = () => {
+            console.log("Peer connection state for", student, ":", pc.connectionState);
+        };
+
+
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
         });
+
 
         pc.ontrack = event => {
 
             let video = document.getElementById("video_" + student);
 
             if (!video) {
+
                 const wrapper = document.createElement("div");
                 wrapper.innerHTML = "<h4>🎓 " + student + "</h4>";
-                const kickBtn = document.createElement("button");
-        kickBtn.innerText = "❌ Kick";
-        kickBtn.style.backgroundColor = "red";
-        kickBtn.style.color = "white";
-        kickBtn.style.border = "none";
-        kickBtn.style.padding = "5px 10px";
-        kickBtn.style.cursor = "pointer";
-        kickBtn.style.marginBottom = "8px";
 
-        kickBtn.onclick = () => kickStudent(student);
+                const kickBtn = document.createElement("button");
+                kickBtn.innerText = "❌ Kick";
+                kickBtn.style.backgroundColor = "red";
+                kickBtn.style.color = "white";
+                kickBtn.style.border = "none";
+                kickBtn.style.padding = "5px 10px";
+                kickBtn.style.cursor = "pointer";
+                kickBtn.style.marginBottom = "8px";
+
+                kickBtn.onclick = () => kickStudent(student);
 
                 video = document.createElement("video");
                 video.id = "video_" + student;
@@ -184,6 +229,7 @@ socket.onmessage = async function(event) {
                 video.playsInline = true;
                 video.width = 300;
 
+                wrapper.appendChild(kickBtn);
                 wrapper.appendChild(video);
                 videoContainer.appendChild(wrapper);
             }
@@ -191,15 +237,23 @@ socket.onmessage = async function(event) {
             video.srcObject = event.streams[0];
         };
 
+
         pc.onicecandidate = event => {
+
             if (event.candidate) {
+
+                console.log("Sending ICE candidate");
+
                 socket.send(JSON.stringify({
                     type: "candidate",
                     candidate: event.candidate,
-                     sender: "{{ request.user.username }}"
+                    sender: "{{ request.user.username }}"
                 }));
+
             }
+
         };
+
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -209,34 +263,43 @@ socket.onmessage = async function(event) {
             offer: offer,
             sender: "{{ request.user.username }}"
         }));
+
     }
 
+
     if (data.type === "answer") {
-    const student = data.sender;
-    const pc = peerConnections[student];
 
-    if (pc) {
-        console.log("Signaling state before answer:", pc.signalingState);
+        const student = data.sender;
+        const pc = peerConnections[student];
 
-        if (pc.signalingState === "have-local-offer") {
+        if (pc && pc.signalingState === "have-local-offer") {
+
             await pc.setRemoteDescription(
                 new RTCSessionDescription(data.answer)
             );
-        } else {
-            console.log("Ignoring duplicate answer from", student);
+
         }
+
     }
-}
+
 
     if (data.type === "candidate") {
+
         const student = data.sender;
+
         if (peerConnections[student] && peerConnections[student].remoteDescription) {
+
             await peerConnections[student]
                 .addIceCandidate(new RTCIceCandidate(data.candidate));
+
         }
+
     }
+
 };
 
+
+// 🚫 Kick Student
 function kickStudent(username) {
 
     fetch("/kick_student/", {
@@ -253,22 +316,25 @@ function kickStudent(username) {
 
             alert(username + " has been kicked.");
 
-            // Remove video from UI
             const video = document.getElementById("video_" + username);
+
             if (video) {
                 video.parentElement.remove();
             }
 
-            // Notify student via WebSocket
             socket.send(JSON.stringify({
                 type: "kicked",
                 target: username
             }));
         }
+
     });
+
 }
 
-    const micBtn = document.getElementById("micBtn");
+
+// 🎤 Mic Toggle
+const micBtn = document.getElementById("micBtn");
 
 let isMuted = false;
 
@@ -277,12 +343,13 @@ micBtn.onclick = () => {
     if (!localStream) return;
 
     localStream.getAudioTracks().forEach(track => {
-        track.enabled = isMuted;   // toggle
+        track.enabled = isMuted;
     });
 
     isMuted = !isMuted;
 
     micBtn.innerText = isMuted ? "🔊 Unmute" : "🎤 Mute";
+
 };
 
 </script>
