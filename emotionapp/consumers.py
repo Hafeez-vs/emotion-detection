@@ -44,6 +44,3 @@ class ClassroomConsumer(AsyncWebsocketConsumer):
             return
 
         await self.send(text_data=json.dumps(event["message"]))
-
-
-        await self.send(text_data=json.dumps(event["message"]))
