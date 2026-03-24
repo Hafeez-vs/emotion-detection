@@ -23,19 +23,35 @@ class ClassroomConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
+    # async def receive(self, text_data):
+    #     data = json.loads(text_data)
+    #
+    #
+    #
+    #     await self.channel_layer.group_send(
+    #         self.group_name,
+    #         {
+    #             "type": "signal_message",
+    #             "message": data,
+    #             "sender_channel": self.channel_name
+    #         }
+    #     )
+
     async def receive(self, text_data):
-        data = json.loads(text_data)
+        try:
+            data = json.loads(text_data)
 
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    "type": "signal_message",
+                    "message": data,
+                    "sender_channel": self.channel_name
+                }
+            )
 
-
-        await self.channel_layer.group_send(
-            self.group_name,
-            {
-                "type": "signal_message",
-                "message": data,
-                "sender_channel": self.channel_name
-            }
-        )
+        except Exception as e:
+            print("❌ ERROR:", e)
 
 
 

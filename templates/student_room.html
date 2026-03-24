@@ -29,15 +29,13 @@
 <script>
 
 const classroomId = "{{ classroom.id }}";
-
-
+const username = "{{ request.user.username }}";
 
 const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
 
 const socket = new WebSocket(
     protocol + window.location.host + "/ws/classroom/" + classroomId + "/"
 );
-
 
 const videoContainer = document.getElementById("videoContainer");
 
@@ -48,14 +46,20 @@ const config = {
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 };
 
-// 1️⃣ Capture Student Camera
+let isSocketOpen = false;
+let isCameraReady = false;
+
+// 🎥 1️⃣ Start Camera FIRST
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 .then(stream => {
 
+    console.log("🎥 Camera started");
+
     localStream = stream;
+    isCameraReady = true;
 
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = "<h4>🟢 {{ request.user.username }} (You)</h4>";
+    wrapper.innerHTML = "<h4>🟢 " + username + " (You)</h4>";
 
     const video = document.createElement("video");
     video.autoplay = true;
@@ -67,30 +71,65 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     wrapper.appendChild(video);
     videoContainer.appendChild(wrapper);
 
-    // Notify join after camera ready
-    socket.send(JSON.stringify({
-        type: "join",
-        sender: "{{ request.user.username }}"
-    }));
+    tryJoin();  // 🔥 attempt join after camera ready
+})
+.catch(err => {
+    console.error("Camera error:", err);
 });
 
-// 2️⃣ Handle Messages
+// 🌐 2️⃣ WebSocket events
+socket.onopen = () => {
+    console.log("✅ WebSocket connected");
+    isSocketOpen = true;
+    tryJoin();  // 🔥 attempt join after socket ready
+};
+
+socket.onerror = (err) => {
+    console.error("❌ WebSocket error:", err);
+};
+
+socket.onclose = () => {
+    console.log("⚠ WebSocket closed");
+};
+
+// 🔥 JOIN ONLY WHEN BOTH READY
+function tryJoin() {
+    if (isSocketOpen && isCameraReady) {
+        console.log("🚀 Sending join");
+
+        socket.send(JSON.stringify({
+            type: "join",
+            sender: username
+        }));
+    }
+}
+
+// 📡 3️⃣ Handle messages
 socket.onmessage = async function(event) {
 
     const data = JSON.parse(event.data);
-    console.log("Received:", data.type, data.sender);
+    console.log("📩 Received:", data.type, data.sender);
 
     if (data.type === "offer") {
+
+        if (!localStream) {
+            console.log("⏳ Camera not ready yet");
+            return;
+        }
+
         if (peerConnection) {
-        console.log("Already have connection, ignoring duplicate offer");
-        return;
-    }
+            console.log("⚠ Already connected");
+            return;
+        }
+
         peerConnection = new RTCPeerConnection(config);
 
+        // Add tracks
         localStream.getTracks().forEach(track => {
             peerConnection.addTrack(track, localStream);
         });
 
+        // Receive teacher video
         peerConnection.ontrack = event => {
 
             let video = document.getElementById("teacherVideo");
@@ -112,43 +151,47 @@ socket.onmessage = async function(event) {
             video.srcObject = event.streams[0];
         };
 
+        // ICE
         peerConnection.onicecandidate = event => {
             if (event.candidate) {
                 socket.send(JSON.stringify({
-    type: "candidate",
-    candidate: event.candidate,
-    sender: "{{ request.user.username }}"
-}));
+                    type: "candidate",
+                    candidate: event.candidate,
+                    sender: username
+                }));
             }
         };
 
+        // Set offer
         await peerConnection.setRemoteDescription(
             new RTCSessionDescription(data.offer)
         );
 
-
-
+        // Create answer
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
         socket.send(JSON.stringify({
             type: "answer",
             answer: answer,
-            sender: "{{ request.user.username }}"
+            sender: username
         }));
     }
 
+    // ICE from teacher
     if (data.type === "candidate" && peerConnection) {
-    try {
-        await peerConnection.addIceCandidate(
-            new RTCIceCandidate(data.candidate)
-        );
-    } catch (e) {
-        console.log("ICE add error:", e);
+        try {
+            await peerConnection.addIceCandidate(
+                new RTCIceCandidate(data.candidate)
+            );
+        } catch (e) {
+            console.log("ICE error:", e);
+        }
     }
-}
 };
-    const micBtn = document.getElementById("micBtn");
+
+// 🎤 Mic toggle
+const micBtn = document.getElementById("micBtn");
 
 let isMuted = false;
 
@@ -157,7 +200,7 @@ micBtn.onclick = () => {
     if (!localStream) return;
 
     localStream.getAudioTracks().forEach(track => {
-        track.enabled = isMuted;   // toggle
+        track.enabled = isMuted;
     });
 
     isMuted = !isMuted;
