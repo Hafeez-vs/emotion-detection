@@ -297,12 +297,14 @@ socket.onmessage = async function(event) {
 
         const student = data.sender;
 
-        if (peerConnections[student] && peerConnections[student].remoteDescription) {
-
-            await peerConnections[student]
-                .addIceCandidate(new RTCIceCandidate(data.candidate));
-
-        }
+        if (peerConnections[student]) {
+    try {
+        await peerConnections[student]
+            .addIceCandidate(new RTCIceCandidate(data.candidate));
+    } catch (e) {
+        console.log("ICE error:", e);
+    }
+}
 
     }
 

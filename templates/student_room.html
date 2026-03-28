@@ -180,6 +180,7 @@ socket.onmessage = async function(event) {
         await peerConnection.setRemoteDescription(
             new RTCSessionDescription(data.offer)
         );
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Create answer
         const answer = await peerConnection.createAnswer();
