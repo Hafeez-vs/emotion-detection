@@ -28,16 +28,18 @@
 </head>
 <body>
 
-<h2>👩‍🏫 {{ classroom.title }} </h2>
+<h2>Teacher Room - {{ classroom.title }}</h2>
 <button onclick="detectEmotionAll()"
         style="padding:10px 20px; margin:20px; font-size:16px;">
-    🎭 Detect Emotion
+    Detect Emotion
 </button>
 
 <button id="micBtn"
         style="padding:8px 16px; margin:10px; font-size:14px;">
-    🎤 Mute
+    Mute
 </button>
+
+<p id="detectStatus" style="min-height:24px; color:#ffd166; font-weight:bold;"></p>
 
 <div id="videoContainer"></div>
 
@@ -45,14 +47,31 @@
 
 console.log("Teacher room script loaded");
 
+const detectStatus = document.getElementById("detectStatus");
+
 function detectEmotionAll() {
 
-    const videos = document.querySelectorAll("video");
+    const videos = Array.from(document.querySelectorAll("video")).filter(video => !video.muted);
+
+    if (!videos.length) {
+        detectStatus.innerText = "No student video found for detection.";
+        return;
+    }
+
+    detectStatus.innerText = "Detecting emotion...";
+    let processedCount = 0;
+    let successCount = 0;
 
     videos.forEach(video => {
 
-        if (video.muted) return;
-        if (!video.videoWidth || !video.videoHeight) return;
+        if (!video.videoWidth || !video.videoHeight) {
+            processedCount += 1;
+
+            if (processedCount === videos.length && successCount === 0) {
+                detectStatus.innerText = "Student video is not ready yet. Try again in a moment.";
+            }
+            return;
+        }
 
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth;
@@ -68,21 +87,36 @@ function detectEmotionAll() {
             headers: {
                 "Content-Type": "application/json"
             },
+            credentials: "same-origin",
             body: JSON.stringify({ image: imageData })
         })
-        .then(res => res.json())
-        .then(data => {
+        .then(async res => {
+            const data = await res.json();
 
-            if (!data.emotion) return;
+            if (!res.ok) {
+                throw new Error(data.error || "Emotion detection failed");
+            }
+
+            return data;
+        })
+        .then(data => {
+            processedCount += 1;
+
+            if (!data.emotion) {
+                if (processedCount === videos.length && successCount === 0) {
+                    detectStatus.innerText = "No emotion result returned.";
+                }
+                return;
+            }
 
             const emojiMap = {
-                happy: "😄",
-                sad: "😢",
-                angry: "😡",
-                surprise: "😲",
-                fear: "😨",
-                disgust: "🤢",
-                neutral: "😐"
+                happy: "Happy",
+                sad: "Sad",
+                angry: "Angry",
+                surprise: "Surprise",
+                fear: "Fear",
+                disgust: "Disgust",
+                neutral: "Neutral"
             };
 
             let emotionLabel = video.parentElement.querySelector(".emotion-label");
@@ -96,10 +130,19 @@ function detectEmotionAll() {
                 video.parentElement.appendChild(emotionLabel);
             }
 
-            emotionLabel.innerText = emojiMap[data.emotion] + " " + data.emotion;
+            emotionLabel.innerText = emojiMap[data.emotion] || data.emotion;
+            successCount += 1;
+
+            if (processedCount === videos.length) {
+                detectStatus.innerText = "Emotion detection complete.";
+            }
 
         })
-        .catch(err => console.log("Emotion error:", err));
+        .catch(err => {
+            processedCount += 1;
+            console.log("Emotion error:", err);
+            detectStatus.innerText = "Emotion detection failed: " + err.message;
+        });
 
     });
 
@@ -117,7 +160,6 @@ const socket = new WebSocket(
     protocol + window.location.host + "/ws/classroom/" + classroomId + "/"
 );
 
-
 socket.onopen = () => {
     console.log("WebSocket connected");
 };
@@ -129,7 +171,6 @@ socket.onerror = (error) => {
 socket.onclose = () => {
     console.log("WebSocket closed");
 };
-
 
 const videoContainer = document.getElementById("videoContainer");
 
@@ -154,16 +195,15 @@ const config = {
     ]
 };
 
-
 function renderStudentVideo(student, stream) {
     let video = document.getElementById("video_" + student);
 
     if (!video) {
         const wrapper = document.createElement("div");
-        wrapper.innerHTML = "<h4>🎓 " + student + "</h4>";
+        wrapper.innerHTML = "<h4>" + student + "</h4>";
 
         const kickBtn = document.createElement("button");
-        kickBtn.innerText = "❌ Kick";
+        kickBtn.innerText = "Kick";
         kickBtn.style.backgroundColor = "red";
         kickBtn.style.color = "white";
         kickBtn.style.border = "none";
@@ -187,7 +227,6 @@ function renderStudentVideo(student, stream) {
         video.srcObject = stream;
     }
 }
-
 
 async function createPeerConnectionForStudent(student) {
 
@@ -252,7 +291,6 @@ async function createPeerConnectionForStudent(student) {
     }));
 }
 
-
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 .then(stream => {
 
@@ -261,7 +299,7 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     localStream = stream;
 
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = "<h4>🟢 {{ request.user.username }} (You)</h4>";
+    wrapper.innerHTML = "<h4>{{ request.user.username }} (You)</h4>";
 
     const video = document.createElement("video");
     video.autoplay = true;
@@ -281,7 +319,6 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 .catch(error => {
     console.log("Camera error:", error);
 });
-
 
 socket.onmessage = async function(event) {
 
@@ -341,7 +378,6 @@ socket.onmessage = async function(event) {
 
 };
 
-
 function kickStudent(username) {
 
     fetch("/kick_student/", {
@@ -374,7 +410,6 @@ function kickStudent(username) {
 
 }
 
-
 const micBtn = document.getElementById("micBtn");
 
 let isMuted = false;
@@ -389,7 +424,7 @@ micBtn.onclick = () => {
 
     isMuted = !isMuted;
 
-    micBtn.innerText = isMuted ? "🔊 Unmute" : "🎤 Mute";
+    micBtn.innerText = isMuted ? "Unmute" : "Mute";
 
 };
 
