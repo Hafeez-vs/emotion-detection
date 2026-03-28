@@ -30,6 +30,7 @@
 
 const classroomId = "{{ classroom.id }}";
 const username = "{{ request.user.username }}";
+const teacherUsername = "{{ classroom.teacher.username }}";
 
 const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
 
@@ -171,7 +172,8 @@ socket.onmessage = async function(event) {
                 socket.send(JSON.stringify({
                     type: "candidate",
                     candidate: event.candidate,
-                    sender: username
+                    sender: username,
+                    target: teacherUsername
                 }));
             }
         };
@@ -189,7 +191,8 @@ socket.onmessage = async function(event) {
         socket.send(JSON.stringify({
             type: "answer",
             answer: answer,
-            sender: username
+            sender: username,
+            target: teacherUsername
         }));
     }
 

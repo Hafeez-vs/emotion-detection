@@ -40,6 +40,10 @@ class ClassroomConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data):
         try:
             data = json.loads(text_data)
+            sender = getattr(self.user, "username", None)
+
+            if sender and not data.get("sender"):
+                data["sender"] = sender
 
             await self.channel_layer.group_send(
                 self.group_name,
@@ -59,4 +63,11 @@ class ClassroomConsumer(AsyncWebsocketConsumer):
         if self.channel_name == event["sender_channel"]:
             return
 
-        await self.send(text_data=json.dumps(event["message"]))
+        message = event["message"]
+        target = message.get("target")
+        current_user = getattr(self.user, "username", None)
+
+        if target and target != current_user:
+            return
+
+        await self.send(text_data=json.dumps(message))

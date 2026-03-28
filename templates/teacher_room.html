@@ -51,7 +51,8 @@ function detectEmotionAll() {
 
     videos.forEach(video => {
 
-        if (video.muted) return; // skip teacher self video
+        if (video.muted) return;
+        if (!video.videoWidth || !video.videoHeight) return;
 
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth;
@@ -106,6 +107,7 @@ function detectEmotionAll() {
 
 
 const classroomId = "{{ classroom.id }}";
+const teacherUsername = "{{ request.user.username }}";
 
 console.log("Classroom ID:", classroomId);
 
@@ -117,15 +119,15 @@ const socket = new WebSocket(
 
 
 socket.onopen = () => {
-    console.log("✅ WebSocket connected");
+    console.log("WebSocket connected");
 };
 
 socket.onerror = (error) => {
-    console.log("❌ WebSocket error:", error);
+    console.log("WebSocket error:", error);
 };
 
 socket.onclose = () => {
-    console.log("⚠ WebSocket closed");
+    console.log("WebSocket closed");
 };
 
 
@@ -133,11 +135,11 @@ const videoContainer = document.getElementById("videoContainer");
 
 let localStream;
 let peerConnections = {};
+let pendingStudents = [];
 
 const config = {
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
-
         {
             urls: "turn:openrelay.metered.ca:80",
             username: "openrelayproject",
@@ -149,11 +151,105 @@ const config = {
             credential: "openrelayproject"
         }
     ],
-    iceTransportPolicy: "relay"   // 🔥 IMPORTANT
+    iceTransportPolicy: "relay"
 };
 
 
-// 🎥 Capture Teacher Camera
+function renderStudentVideo(student, stream) {
+    let video = document.getElementById("video_" + student);
+
+    if (!video) {
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = "<h4>🎓 " + student + "</h4>";
+
+        const kickBtn = document.createElement("button");
+        kickBtn.innerText = "❌ Kick";
+        kickBtn.style.backgroundColor = "red";
+        kickBtn.style.color = "white";
+        kickBtn.style.border = "none";
+        kickBtn.style.padding = "5px 10px";
+        kickBtn.style.cursor = "pointer";
+        kickBtn.style.marginBottom = "8px";
+        kickBtn.onclick = () => kickStudent(student);
+
+        video = document.createElement("video");
+        video.id = "video_" + student;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.width = 300;
+
+        wrapper.appendChild(kickBtn);
+        wrapper.appendChild(video);
+        videoContainer.appendChild(wrapper);
+    }
+
+    if (video.srcObject !== stream) {
+        video.srcObject = stream;
+    }
+}
+
+
+async function createPeerConnectionForStudent(student) {
+
+    if (!student) return;
+
+    if (!localStream) {
+        if (!pendingStudents.includes(student)) {
+            pendingStudents.push(student);
+        }
+        return;
+    }
+
+    if (peerConnections[student]) {
+        console.log("Already connected to", student);
+        return;
+    }
+
+    const pc = new RTCPeerConnection(config);
+    peerConnections[student] = pc;
+
+    pc.oniceconnectionstatechange = () => {
+        console.log("ICE state for", student, ":", pc.iceConnectionState);
+    };
+
+    pc.onconnectionstatechange = () => {
+        console.log("Peer connection state for", student, ":", pc.connectionState);
+    };
+
+    localStream.getTracks().forEach(track => {
+        pc.addTrack(track, localStream);
+    });
+
+    pc.ontrack = event => {
+        const [remoteStream] = event.streams;
+        if (remoteStream) {
+            renderStudentVideo(student, remoteStream);
+        }
+    };
+
+    pc.onicecandidate = event => {
+        if (!event.candidate) return;
+
+        socket.send(JSON.stringify({
+            type: "candidate",
+            candidate: event.candidate,
+            sender: teacherUsername,
+            target: student
+        }));
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    socket.send(JSON.stringify({
+        type: "offer",
+        offer: offer,
+        sender: teacherUsername,
+        target: student
+    }));
+}
+
+
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
 .then(stream => {
 
@@ -174,108 +270,26 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     wrapper.appendChild(video);
     videoContainer.appendChild(wrapper);
 
+    pendingStudents.splice(0).forEach(student => {
+        createPeerConnectionForStudent(student);
+    });
+
+})
+.catch(error => {
+    console.log("Camera error:", error);
 });
 
 
-// 📡 Handle WebSocket Messages
 socket.onmessage = async function(event) {
 
-    console.log("📩 Raw message:", event.data);
+    console.log("Raw message:", event.data);
 
     const data = JSON.parse(event.data);
     console.log("Received:", data.type, data.sender);
 
-
     if (data.type === "join") {
-
-        const student = data.sender;
-
-        if (peerConnections[student]) {
-            console.log("Already connected to", student);
-            return;
-        }
-
-        const pc = new RTCPeerConnection(config);
-        peerConnections[student] = pc;
-
-
-        pc.oniceconnectionstatechange = () => {
-            console.log("ICE state for", student, ":", pc.iceConnectionState);
-        };
-
-        pc.onconnectionstatechange = () => {
-            console.log("Peer connection state for", student, ":", pc.connectionState);
-        };
-
-
-        localStream.getTracks().forEach(track => {
-            pc.addTrack(track, localStream);
-        });
-
-
-        pc.ontrack = event => {
-
-            let video = document.getElementById("video_" + student);
-
-            if (!video) {
-
-                const wrapper = document.createElement("div");
-                wrapper.innerHTML = "<h4>🎓 " + student + "</h4>";
-
-                const kickBtn = document.createElement("button");
-                kickBtn.innerText = "❌ Kick";
-                kickBtn.style.backgroundColor = "red";
-                kickBtn.style.color = "white";
-                kickBtn.style.border = "none";
-                kickBtn.style.padding = "5px 10px";
-                kickBtn.style.cursor = "pointer";
-                kickBtn.style.marginBottom = "8px";
-
-                kickBtn.onclick = () => kickStudent(student);
-
-                video = document.createElement("video");
-                video.id = "video_" + student;
-                video.autoplay = true;
-                video.playsInline = true;
-                video.width = 300;
-
-                wrapper.appendChild(kickBtn);
-                wrapper.appendChild(video);
-                videoContainer.appendChild(wrapper);
-            }
-
-            video.srcObject = event.streams[0];
-        };
-
-
-        pc.onicecandidate = event => {
-
-            if (event.candidate) {
-
-                console.log("Sending ICE candidate");
-
-                socket.send(JSON.stringify({
-                    type: "candidate",
-                    candidate: event.candidate,
-                    sender: "{{ request.user.username }}"
-                }));
-
-            }
-
-        };
-
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        socket.send(JSON.stringify({
-            type: "offer",
-            offer: offer,
-            sender: "{{ request.user.username }}"
-        }));
-
+        await createPeerConnectionForStudent(data.sender);
     }
-
 
     if (data.type === "answer") {
 
@@ -283,35 +297,31 @@ socket.onmessage = async function(event) {
         const pc = peerConnections[student];
 
         if (pc && pc.signalingState === "have-local-offer") {
-
             await pc.setRemoteDescription(
                 new RTCSessionDescription(data.answer)
             );
-
         }
 
     }
 
-
     if (data.type === "candidate") {
 
         const student = data.sender;
+        const pc = peerConnections[student];
 
-        if (peerConnections[student]) {
-    try {
-        await peerConnections[student]
-            .addIceCandidate(new RTCIceCandidate(data.candidate));
-    } catch (e) {
-        console.log("ICE error:", e);
-    }
-}
+        if (pc) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (e) {
+                console.log("ICE error:", e);
+            }
+        }
 
     }
 
 };
 
 
-// 🚫 Kick Student
 function kickStudent(username) {
 
     fetch("/kick_student/", {
@@ -345,7 +355,6 @@ function kickStudent(username) {
 }
 
 
-// 🎤 Mic Toggle
 const micBtn = document.getElementById("micBtn");
 
 let isMuted = false;
