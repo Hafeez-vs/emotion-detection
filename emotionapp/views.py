@@ -6,12 +6,39 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from django.contrib.auth import logout
 import base64
+import os
 import numpy as np
 import cv2
 from deepface import DeepFace
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
+
+
+def analyze_emotion_with_retry(img):
+    try:
+        return DeepFace.analyze(
+            img,
+            actions=["emotion"],
+            enforce_detection=False,
+            detector_backend="opencv"
+        )
+    except Exception as e:
+        error_message = str(e)
+        weights_path = "/opt/render/.deepface/weights/facial_expression_model_weights.h5"
+
+        if "facial_expression_model_weights.h5" not in error_message:
+            raise
+
+        if os.path.exists(weights_path):
+            os.remove(weights_path)
+
+        return DeepFace.analyze(
+            img,
+            actions=["emotion"],
+            enforce_detection=False,
+            detector_backend="opencv"
+        )
 
 
 
@@ -61,12 +88,7 @@ def detect_emotion(request):
         img = cv2.resize(img, (224, 224))
 
         # DeepFace emotion analysis
-        result = DeepFace.analyze(
-            img,
-            actions=["emotion"],
-            enforce_detection=False,
-            detector_backend="opencv"
-        )
+        result = analyze_emotion_with_retry(img)
 
         emotion = result[0]["dominant_emotion"]
 
