@@ -42,6 +42,7 @@ const videoContainer = document.getElementById("videoContainer");
 
 let localStream;
 let peerConnection;
+let pendingIceCandidates = [];
 
 const config = {
     iceServers: [
@@ -57,8 +58,7 @@ const config = {
             username: "openrelayproject",
             credential: "openrelayproject"
         }
-    ],
-    iceTransportPolicy: "relay"
+    ]
 };
 
 let isSocketOpen = false;
@@ -139,6 +139,14 @@ socket.onmessage = async function(event) {
 
         peerConnection = new RTCPeerConnection(config);
 
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log("Student ICE state:", peerConnection.iceConnectionState);
+        };
+
+        peerConnection.onconnectionstatechange = () => {
+            console.log("Student connection state:", peerConnection.connectionState);
+        };
+
         // Add tracks
         localStream.getTracks().forEach(track => {
             peerConnection.addTrack(track, localStream);
@@ -169,6 +177,7 @@ socket.onmessage = async function(event) {
         // ICE
         peerConnection.onicecandidate = event => {
             if (event.candidate) {
+                console.log("Student sending ICE candidate");
                 socket.send(JSON.stringify({
                     type: "candidate",
                     candidate: event.candidate,
@@ -182,7 +191,17 @@ socket.onmessage = async function(event) {
         await peerConnection.setRemoteDescription(
             new RTCSessionDescription(data.offer)
         );
-        await new Promise(resolve => setTimeout(resolve, 500));
+
+        while (pendingIceCandidates.length) {
+            const candidate = pendingIceCandidates.shift();
+            try {
+                await peerConnection.addIceCandidate(
+                    new RTCIceCandidate(candidate)
+                );
+            } catch (e) {
+                console.log("Student queued ICE error:", e);
+            }
+        }
 
         // Create answer
         const answer = await peerConnection.createAnswer();
@@ -197,7 +216,12 @@ socket.onmessage = async function(event) {
     }
 
     // ICE from teacher
-    if (data.type === "candidate" && peerConnection) {
+    if (data.type === "candidate") {
+        if (!peerConnection || !peerConnection.remoteDescription) {
+            pendingIceCandidates.push(data.candidate);
+            return;
+        }
+
         try {
             await peerConnection.addIceCandidate(
                 new RTCIceCandidate(data.candidate)

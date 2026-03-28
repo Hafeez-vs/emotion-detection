@@ -136,6 +136,7 @@ const videoContainer = document.getElementById("videoContainer");
 let localStream;
 let peerConnections = {};
 let pendingStudents = [];
+let pendingIceCandidates = {};
 
 const config = {
     iceServers: [
@@ -150,8 +151,7 @@ const config = {
             username: "openrelayproject",
             credential: "openrelayproject"
         }
-    ],
-    iceTransportPolicy: "relay"
+    ]
 };
 
 
@@ -207,6 +207,7 @@ async function createPeerConnectionForStudent(student) {
 
     const pc = new RTCPeerConnection(config);
     peerConnections[student] = pc;
+    pendingIceCandidates[student] = [];
 
     pc.oniceconnectionstatechange = () => {
         console.log("ICE state for", student, ":", pc.iceConnectionState);
@@ -229,6 +230,8 @@ async function createPeerConnectionForStudent(student) {
 
     pc.onicecandidate = event => {
         if (!event.candidate) return;
+
+        console.log("Teacher sending ICE candidate to", student);
 
         socket.send(JSON.stringify({
             type: "candidate",
@@ -300,6 +303,15 @@ socket.onmessage = async function(event) {
             await pc.setRemoteDescription(
                 new RTCSessionDescription(data.answer)
             );
+
+            while (pendingIceCandidates[student] && pendingIceCandidates[student].length) {
+                const candidate = pendingIceCandidates[student].shift();
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (e) {
+                    console.log("Teacher queued ICE error:", e);
+                }
+            }
         }
 
     }
@@ -310,6 +322,14 @@ socket.onmessage = async function(event) {
         const pc = peerConnections[student];
 
         if (pc) {
+            if (!pc.remoteDescription) {
+                if (!pendingIceCandidates[student]) {
+                    pendingIceCandidates[student] = [];
+                }
+                pendingIceCandidates[student].push(data.candidate);
+                return;
+            }
+
             try {
                 await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
             } catch (e) {
